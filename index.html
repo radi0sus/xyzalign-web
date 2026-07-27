@@ -117,6 +117,12 @@
             <button id="btn-run-axes" class="btn-small" disabled>Run alignment</button>
             <button id="btn-clear-groups" class="btn-small">Clear groups</button>
           </div>
+
+          <label class="toggle-switch" for="ls-toggle" style="margin-top:10px;" title="Fit all given axis groups simultaneously with one least-squares-optimal rotation (Kabsch/Wahba), instead of xyzalign.py's sequential align-then-correct passes. Treats every axis equally (no X-over-Y priority) and never inverts chirality.">
+            <input type="checkbox" id="ls-toggle" checked />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span class="toggle-text">Use least-squares (Kabsch) fit instead of the sequential method</span>
+          </label>
         </div>
 
 

@@ -1,6 +1,6 @@
-# xyzalign-web
+# xyzalign web
 
-`xyzalign-web` is a browser-based, interactive port of
+`xyzalign web` is a browser-based, interactive port of
 [**xyzalign**](https://github.com/radi0sus/xyzalign), a Python 3 script for
 aligning, rotating and translating atomic coordinates in xyz files. It keeps
 the same underlying math (origin centering, alignment of one or more atoms
@@ -33,7 +33,24 @@ required — the file is only read locally by the browser.
   (equivalent to the script's `-x`/`-y`/`-z`, each of which can take
   several atoms) and run the alignment in one step. Any combination works
   (X only, X+Y, or X+Y+Z); with more than one atom in a group, the pooled
-  centroid of that group is used
+  centroid of that group is used. Two alignment methods are available,
+  **least-squares (Kabsch) by default**:
+  - the optional **sequential** method, a faithful port of the script's own
+    align-then-correct passes (implicitly prioritizes X over Y over Z —
+    see [Alignment logic](#alignment-logic) below)
+  - the default **least-squares (Kabsch/Wahba) fit**, which finds the
+    single rotation that best satisfies all given axis groups
+    *simultaneously*, splitting the unavoidable residual error evenly
+    across axes instead of dumping it onto whichever axis was aligned
+    last. It is also guaranteed to always be a proper rotation (never an
+    accidental point-inversion/reflection — see below)
+- **Chirality/inversion warning** — every rotation-producing step (the
+  sequential axis alignment, manual rotate, and the custom matrix) checks
+  its determinant. If a step ever produces an improper transformation
+  (determinant < 0 — a reflection/inversion rather than a real rotation),
+  a warning banner appears and the transformation log flags exactly which
+  step caused it. The least-squares alignment can never trigger this by
+  construction.
 - **Rotate** — arbitrary counterclockwise rotation about the x-, y- and
   z-axis, applied in that order
 - **Translate** — arbitrary translation in x, y, z (Å)
@@ -57,7 +74,11 @@ index.html
 in a modern web browser.
 
 Then drag and drop an xyz file into the drop zone, or click it to browse.
-A typical workflow, equivalent to `xyzalign.py`
+A typical workflow, equivalent to
+
+```
+python3 xyzalign.py filename.xyz -o 1 -x 2 -y 3 -z 4
+```
 
 looks like this in the app:
 
@@ -78,18 +99,44 @@ back unchanged on export.
 
 ## Alignment logic
 
-The alignment math is a direct, line-by-line port of `xyzalign.py`'s
-`rotmat_from_vec` / `rotmat_from_ang` / `align_xyz` functions, including
-the exact sequence used when more than one axis group is defined: each
-axis is aligned in turn using the coordinates already produced by the
-previous step, then (if X and Y, or X, Y and Z are all defined) extra
-combination passes bring the groups as close as possible to their target
-axes simultaneously, followed by a final re-alignment of Y and then X.
+Two alignment methods are available for the X/Y/Z axis groups, selectable
+via the **"Use least-squares (Kabsch) fit"** toggle (checked by default).
 
-As in the original script, a perfect alignment of a "real world" molecule
-to all three axes at once is generally impossible — the app tries to get
-as close as possible, with priority given to the x-axis, exactly as the
-reference implementation does.
+**Sequential (default, matches `xyzalign.py` exactly)** — a direct,
+line-by-line port of `xyzalign.py`'s `rotmat_from_vec` / `rotmat_from_ang`
+/ `align_xyz` functions and its exact multi-axis sequence: each axis is
+aligned in turn using the coordinates already produced by the previous
+step, then (if X and Y, or X, Y and Z are all defined) extra combination
+passes bring the groups as close as possible to their target axes
+simultaneously, followed by a final re-alignment of Y and then X. As in
+the original script, a perfect alignment of a "real world" molecule to
+all three axes at once is generally impossible — the app tries to get as
+close as possible, but this iterative procedure implicitly **prioritizes
+X over Y over Z**: X ends up exactly on its axis, while Y (and Z) only
+end up as close as the geometry allows, with whatever residual error is
+left over.
+
+**Least-squares (Kabsch/Wahba)** — an alternative that fits every given
+axis group with a single rotation chosen to minimize the total squared
+angular error across *all* axes at once (the same math used for optimal
+structure overlays/RMSD fitting). Unlike the sequential method, it treats
+every axis equally: with two non-orthogonal target atoms, for example,
+it splits the unavoidable deviation evenly between X and Y instead of
+making X perfect at Y's expense. It is also always a proper rotation
+(determinant +1) by construction.
+
+That last point matters: the sequential method inherited from
+`xyzalign.py` has a genuine edge case where aligning two *exactly*
+antiparallel vectors (not lying on a coordinate axis) produces a
+point-inversion (determinant −1) rather than a real rotation — silently
+flipping the molecule's chirality. This is a known limitation of the
+reference script's approach, not something introduced by this port. The
+least-squares method does not have this failure mode.
+
+Both methods only affect the axis-group alignment step (`-x`/`-y`/`-z`
+and the button under **"2. Align to axes"**); the **Origin** step,
+**Rotate**, **Translate** and the **custom matrix** step are unaffected
+and identical either way.
 
 ## 3Dmol.js citation
 
@@ -103,12 +150,23 @@ Please cite:
 > Rego, N. and Koes, D. (2015).
 > 3Dmol.js: molecular visualization with WebGL. *Bioinformatics*, 31(8), 1322–1324. <https://academic.oup.com/bioinformatics/article/31/8/1322/213186>
 
+## License
+
+This project is licensed under the BSD 3-Clause License, the same license
+as the original [xyzalign](https://github.com/radi0sus/xyzalign) Python
+script it is based on.
+
+See `LICENSE` for details.
+
 ## Known limitations
 
 - Alignment of two vectors that are already exactly antiparallel and both
   lie on a coordinate axis is a numerically unstable edge case inherited
   directly from the reference script's Rodrigues-formula-based approach;
   in practice this only affects already near-perfectly aligned inputs.
+  The related (and more consequential) case of exactly antiparallel,
+  non-axis-aligned vectors producing a chirality-flipping inversion is
+  avoided entirely by switching to the least-squares (Kabsch) method.
 - Analysis state (selection, groups, loaded file, transformation log) is
   kept only for the current browser session.
 - Very large structures may make bond auto-detection (O(n²) pairwise

@@ -52,6 +52,17 @@
       `${state.stepCount} step${state.stepCount === 1 ? "" : "s"} applied`;
   }
 
+  function showInversionWarning(message) {
+    const banner = document.getElementById("warning-banner");
+    banner.textContent = `⚠️ ${message} (click to dismiss)`;
+    banner.style.display = "block";
+  }
+
+  function hideInversionWarning() {
+    document.getElementById("warning-banner").style.display = "none";
+  }
+
+
   function updateButtonsState() {
     const hasSelection = state.selectedNums.size > 0;
     document.getElementById("btn-assign-x").disabled = !hasSelection;
@@ -114,6 +125,7 @@
       document.getElementById("atom-search").value = "";
       document.getElementById("step-badge").textContent = "0 steps applied";
       UI.renderLog([]);
+      hideInversionWarning();
 
       Viewer.load(state.atoms);
       renderAll(false);
@@ -161,6 +173,8 @@
       state.selectedNums = new Set();
       renderAll(true);
     });
+
+    document.getElementById("warning-banner").addEventListener("click", hideInversionWarning);
 
     Viewer.setAtomClickCallback(toggleSelection);
 
@@ -210,8 +224,12 @@
       const yLabel = yNums.length ? labelForNums(yNums) : null;
       const zLabel = zNums.length ? labelForNums(zNums) : null;
 
-      const { atoms: newAtoms, log } = Math3.runXyzAlignment(state.atoms, xNums, yNums, zNums);
-      state.atoms = newAtoms;
+      const useLeastSquares = document.getElementById("ls-toggle").checked;
+      const result = useLeastSquares
+        ? Math3.runXyzAlignmentLeastSquares(state.atoms, xNums, yNums, zNums)
+        : Math3.runXyzAlignment(state.atoms, xNums, yNums, zNums);
+      state.atoms = result.atoms;
+      const log = result.log;
 
       const header = [
         xLabel ? `X ← ${xLabel}` : null,
@@ -219,10 +237,18 @@
         zLabel ? `Z ← ${zLabel}` : null
       ].filter(Boolean).join(",  ");
 
+      const methodNote = useLeastSquares
+        ? "method: least-squares (Kabsch), all axes fit simultaneously"
+        : "method: sequential (xyzalign.py-style), X prioritized over Y over Z";
       const stepsText = log.map((s) => `  · ${s.label} (vector: ${fmtVec(s.vec)})`).join("\n");
-      pushLog(`Run alignment: ${header}\n${stepsText}`);
+      const inversionNote = result.inverted ? "\n  ⚠️ this step inverted the molecule's chirality (determinant = -1)" : "";
+      pushLog(`Run alignment [${methodNote}]: ${header}\n${stepsText}${inversionNote}`);
+      if (result.inverted) {
+        showInversionWarning("The sequential alignment inverted the molecule's chirality in at least one intermediate step (determinant = -1). Try the least-squares (Kabsch) toggle, which never does this.");
+      }
       renderAll(true);
     });
+
 
     document.getElementById("btn-rotate").addEventListener("click", () => {
       const angles = [
@@ -237,6 +263,9 @@
         `Rotate x=${angles[0]}°, y=${angles[1]}°, z=${angles[2]}° (applied in that order)\n` +
         `  rotation matrix:\n${fmtMatrix(R)}`
       );
+      if (Math3.det3(R) < 0) {
+        showInversionWarning("This rotation inverted the molecule's chirality (determinant = -1) — that shouldn't normally happen for a pure rotation, please double-check the angles.");
+      }
       renderAll(true);
     });
 
@@ -255,7 +284,11 @@
     document.getElementById("btn-matrix").addEventListener("click", () => {
       const M = UI.readMatrixGrid();
       state.atoms = Math3.applyCustomMatrix(state.atoms, M);
-      pushLog(`Apply custom matrix:\n${fmtMatrix(M)}`);
+      const det = Math3.det3(M);
+      pushLog(`Apply custom matrix (determinant = ${det.toFixed(4)}):\n${fmtMatrix(M)}`);
+      if (det < 0) {
+        showInversionWarning(`This matrix has determinant ${det.toFixed(4)} (negative) — it includes a reflection/inversion, not just a rotation, so it will flip the molecule's chirality.`);
+      }
       renderAll(true);
     });
 
@@ -267,6 +300,7 @@
       state.stepCount = 0;
       document.getElementById("step-badge").textContent = "0 steps applied";
       UI.renderLog([]);
+      hideInversionWarning();
       renderAll(false);
     });
 

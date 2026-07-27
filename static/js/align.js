@@ -136,7 +136,163 @@ window.XA_MATH = (() => {
     return { atoms: applyRowMatrix(atoms, transpose(R)), R };
   }
 
-  // General port of the -x/-y/-z (+combo) sequence in xyzalign.py, for
+  function det3(A) {
+    return A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1])
+      - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
+      + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+  }
+
+  // Classic cyclic Jacobi rotation sweep for a symmetric 3x3 matrix.
+  // Returns eigenvalues (descending) and eigenvectors as columns of `vectors`.
+  function jacobiEigenSymmetric3x3(Ain) {
+    const a = Ain.map((row) => row.slice());
+    const v = identity();
+    for (let iter = 0; iter < 100; iter++) {
+      const off = Math.abs(a[0][1]) + Math.abs(a[0][2]) + Math.abs(a[1][2]);
+      if (off < 1e-14) break;
+      for (let p = 0; p < 2; p++) {
+        for (let q = p + 1; q < 3; q++) {
+          if (Math.abs(a[p][q]) < 1e-15) continue;
+          const theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+          const tSign = theta >= 0 ? 1 : -1;
+          const t = tSign / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+          const c = 1 / Math.sqrt(t * t + 1);
+          const s = t * c;
+          const app = a[p][p], aqq = a[q][q], apq = a[p][q];
+          a[p][p] = app - t * apq;
+          a[q][q] = aqq + t * apq;
+          a[p][q] = 0; a[q][p] = 0;
+          for (let k = 0; k < 3; k++) {
+            if (k !== p && k !== q) {
+              const akp = a[k][p], akq = a[k][q];
+              a[k][p] = c * akp - s * akq; a[p][k] = a[k][p];
+              a[k][q] = s * akp + c * akq; a[q][k] = a[k][q];
+            }
+          }
+          for (let k = 0; k < 3; k++) {
+            const vkp = v[k][p], vkq = v[k][q];
+            v[k][p] = c * vkp - s * vkq;
+            v[k][q] = s * vkp + c * vkq;
+          }
+        }
+      }
+    }
+    const eigenvalues = [a[0][0], a[1][1], a[2][2]];
+    const idx = [0, 1, 2].sort((i, j) => eigenvalues[j] - eigenvalues[i]);
+    const sortedVals = idx.map((i) => eigenvalues[i]);
+    const sortedVecs = identity();
+    for (let col = 0; col < 3; col++) for (let row = 0; row < 3; row++) sortedVecs[row][col] = v[row][idx[col]];
+    return { values: sortedVals, vectors: sortedVecs };
+  }
+
+  // Fills in missing (null) unit-vector columns so `cols` (length 3, some
+  // entries null) becomes a complete orthonormal basis. Used to complete U
+  // in the SVD below when B is rank-deficient (e.g. only 1 or 2 atom groups
+  // given, so B has rank < 3 and some singular values are ~0).
+  function completeOrthonormalBasis(cols) {
+    const result = cols.slice();
+    const candidates = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    for (let i = 0; i < 3; i++) {
+      if (result[i]) continue;
+      let found = null;
+      for (const cand of candidates) {
+        let vec = cand.slice();
+        for (let k = 0; k < 3; k++) {
+          if (result[k] && k !== i) {
+            const dp = vec[0] * result[k][0] + vec[1] * result[k][1] + vec[2] * result[k][2];
+            vec = [vec[0] - dp * result[k][0], vec[1] - dp * result[k][1], vec[2] - dp * result[k][2]];
+          }
+        }
+        const n = Math.sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
+        if (n > 1e-6) { found = vec.map((x) => x / n); break; }
+      }
+      result[i] = found;
+    }
+    return result;
+  }
+
+  // Minimal 3x3 SVD (B = U * diag(singVals) * V^T), via eigendecomposition
+  // of B^T B. Only used internally by the Kabsch solver below, so it doesn't
+  // need to handle anything beyond real 3x3 matrices.
+  function svd3x3(B) {
+    const M = matMul(transpose(B), B);
+    const eig = jacobiEigenSymmetric3x3(M);
+    const V = eig.vectors;
+    const singVals = eig.values.map((x) => Math.sqrt(Math.max(x, 0)));
+    const tol = 1e-9 * (singVals[0] || 1);
+
+    let Ucols = [null, null, null];
+    for (let i = 0; i < 3; i++) {
+      if (singVals[i] > tol) {
+        const Vi = [V[0][i], V[1][i], V[2][i]];
+        const BVi = [
+          B[0][0] * Vi[0] + B[0][1] * Vi[1] + B[0][2] * Vi[2],
+          B[1][0] * Vi[0] + B[1][1] * Vi[1] + B[1][2] * Vi[2],
+          B[2][0] * Vi[0] + B[2][1] * Vi[1] + B[2][2] * Vi[2]
+        ];
+        const n = Math.sqrt(BVi[0] * BVi[0] + BVi[1] * BVi[1] + BVi[2] * BVi[2]);
+        Ucols[i] = n > 1e-12 ? BVi.map((x) => x / n) : null;
+      }
+    }
+    Ucols = completeOrthonormalBasis(Ucols);
+    const U = [
+      [Ucols[0][0], Ucols[1][0], Ucols[2][0]],
+      [Ucols[0][1], Ucols[1][1], Ucols[2][1]],
+      [Ucols[0][2], Ucols[1][2], Ucols[2][2]]
+    ];
+    return { U, V, singVals };
+  }
+
+  // Kabsch / Wahba's-problem solution: the single proper rotation R that
+  // minimizes sum_i |R*vectors[i] - targets[i]|^2 (after normalizing every
+  // vector to unit length, so only *direction* matters, matching the rest
+  // of this module). Unlike the iterative runXyzAlignment sequence, this
+  // treats every given axis group equally (no X > Y > Z priority) and can
+  // never produce an improper reflection (det(R) is forced to +1).
+  function kabschRotation(vectors, targets) {
+    const n = vectors.length;
+    const P = vectors.map((v) => { const m = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) || 1; return [v[0] / m, v[1] / m, v[2] / m]; });
+    const Q = targets.map((v) => { const m = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) || 1; return [v[0] / m, v[1] / m, v[2] / m]; });
+
+    let B = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (let i = 0; i < n; i++) {
+      for (let a = 0; a < 3; a++) {
+        for (let b = 0; b < 3; b++) {
+          B[a][b] += Q[i][a] * P[i][b];
+        }
+      }
+    }
+
+    const { U, V } = svd3x3(B);
+    const d = det3(U) * det3(V) >= 0 ? 1 : -1;
+    const D = [[1, 0, 0], [0, 1, 0], [0, 0, d]];
+    return matMul(matMul(U, D), transpose(V));
+  }
+
+  // Least-squares alternative to runXyzAlignment(): fits all given X/Y/Z
+  // atom groups simultaneously with a single Kabsch-optimal rotation,
+  // instead of xyzalign.py's sequential align-then-correct passes.
+  function runXyzAlignmentLeastSquares(atoms, xNums = [], yNums = [], zNums = []) {
+    function groupOf(arr, nums) {
+      return nums.map((n) => arr.find((a) => a.num === n)).filter(Boolean);
+    }
+    const groups = [];
+    if (xNums.length) groups.push({ label: "X", nums: xNums, target: [1, 0, 0] });
+    if (yNums.length) groups.push({ label: "Y", nums: yNums, target: [0, 1, 0] });
+    if (zNums.length) groups.push({ label: "Z", nums: zNums, target: [0, 0, 1] });
+    if (groups.length === 0) return { atoms, log: [], R: identity() };
+
+    const vectors = groups.map((g) => centroid(groupOf(atoms, g.nums)));
+    const targets = groups.map((g) => g.target);
+    const R = kabschRotation(vectors, targets);
+    const newAtoms = applyRowMatrix(atoms, transpose(R));
+    const log = groups.map((g, i) => ({
+      label: `least-squares fit: ${g.label} atom(s) [${g.nums.join(", ")}] → ${g.label}-axis`,
+      vec: vectors[i]
+    }));
+    return { atoms: newAtoms, log, R };
+  }
+
   // arbitrary-size atom groups (one or more atoms per axis), e.g. the
   // equivalent of `xyzalign.py file.xyz -o 1 -x 2 -y 3 -z 4` or
   // `-x 2 3 -y 4 5 6`. xNums/yNums/zNums are arrays of atom .num values;
@@ -157,46 +313,30 @@ window.XA_MATH = (() => {
 
     let cur = atoms;
     const log = [];
+    let inverted = false;
 
-    if (hasX) {
-      const v = centroid(groupOf(cur, xNums));
-      cur = alignToAxis(cur, v, [1, 0, 0]).atoms;
-      log.push({ label: `align X atom(s) [${xNums.join(", ")}] → X-axis`, vec: v });
+    function step(v, axis, label) {
+      const r = alignToAxis(cur, v, axis);
+      cur = r.atoms;
+      if (det3(r.R) < 0) inverted = true;
+      log.push({ label, vec: v });
     }
-    if (hasY) {
-      const v = centroid(groupOf(cur, yNums));
-      cur = alignToAxis(cur, v, [0, 1, 0]).atoms;
-      log.push({ label: `align Y atom(s) [${yNums.join(", ")}] → Y-axis`, vec: v });
-    }
-    if (hasZ) {
-      const v = centroid(groupOf(cur, zNums));
-      cur = alignToAxis(cur, v, [0, 0, 1]).atoms;
-      log.push({ label: `align Z atom(s) [${zNums.join(", ")}] → Z-axis`, vec: v });
-    }
+
+    if (hasX) step(centroid(groupOf(cur, xNums)), [1, 0, 0], `align X atom(s) [${xNums.join(", ")}] → X-axis`);
+    if (hasY) step(centroid(groupOf(cur, yNums)), [0, 1, 0], `align Y atom(s) [${yNums.join(", ")}] → Y-axis`);
+    if (hasZ) step(centroid(groupOf(cur, zNums)), [0, 0, 1], `align Z atom(s) [${zNums.join(", ")}] → Z-axis`);
     if (hasX && hasY && hasZ) {
       const pooled = [...groupOf(cur, xNums), ...groupOf(cur, yNums), ...groupOf(cur, zNums)];
-      const v = centroid(pooled);
-      cur = alignToAxis(cur, v, [1, 1, 1]).atoms;
-      log.push({ label: "align combined X+Y+Z atoms → (1,1,1)", vec: v });
+      step(centroid(pooled), [1, 1, 1], "align combined X+Y+Z atoms → (1,1,1)");
     }
     if (hasX && hasY) {
       const pooled = [...groupOf(cur, xNums), ...groupOf(cur, yNums)];
-      const v = centroid(pooled);
-      cur = alignToAxis(cur, v, [1, 1, 0]).atoms;
-      log.push({ label: "align combined X+Y atoms → (1,1,0)", vec: v });
+      step(centroid(pooled), [1, 1, 0], "align combined X+Y atoms → (1,1,0)");
     }
-    if (hasY) {
-      const v = centroid(groupOf(cur, yNums));
-      cur = alignToAxis(cur, v, [0, 1, 0]).atoms;
-      log.push({ label: "re-align Y atom(s) → Y-axis", vec: v });
-    }
-    if (hasX) {
-      const v = centroid(groupOf(cur, xNums));
-      cur = alignToAxis(cur, v, [1, 0, 0]).atoms;
-      log.push({ label: "re-align X atom(s) → X-axis", vec: v });
-    }
+    if (hasY) step(centroid(groupOf(cur, yNums)), [0, 1, 0], "re-align Y atom(s) → Y-axis");
+    if (hasX) step(centroid(groupOf(cur, xNums)), [1, 0, 0], "re-align X atom(s) → X-axis");
 
-    return { atoms: cur, log };
+    return { atoms: cur, log, inverted };
   }
 
 
@@ -212,6 +352,7 @@ window.XA_MATH = (() => {
 
   return {
     rotmatFromVec, rotmatFromAng, applyRowMatrix, centroid, subtractOrigin,
-    translate, alignToAxis, runXyzAlignment, rotate, applyCustomMatrix, transpose, identity
+    translate, alignToAxis, runXyzAlignment, runXyzAlignmentLeastSquares,
+    rotate, applyCustomMatrix, transpose, identity, det3, kabschRotation
   };
 })();
