@@ -74,11 +74,7 @@ index.html
 in a modern web browser.
 
 Then drag and drop an xyz file into the drop zone, or click it to browse.
-A typical workflow, equivalent to
-
-```
-python3 xyzalign.py filename.xyz -o 1 -x 2 -y 3 -z 4
-```
+A typical workflow, equivalent to `xyzalign.py`
 
 looks like this in the app:
 
@@ -149,14 +145,6 @@ molecular visualization.
 Please cite:
 > Rego, N. and Koes, D. (2015).
 > 3Dmol.js: molecular visualization with WebGL. *Bioinformatics*, 31(8), 1322–1324. <https://academic.oup.com/bioinformatics/article/31/8/1322/213186>
-
-## License
-
-This project is licensed under the BSD 3-Clause License, the same license
-as the original [xyzalign](https://github.com/radi0sus/xyzalign) Python
-script it is based on.
-
-See `LICENSE` for details.
 
 ## Known limitations
 
