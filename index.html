@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>xyzalign web</title>
+  <link rel="stylesheet" href="static/css/style.css" />
+</head>
+<body>
+
+  <header class="app-header">
+    <h1>xyzalign web</h1>
+    <div id="dropzone" class="dropzone">
+      <span>Open or drop an XMol .xyz file (element x y z per line)</span>
+      <input type="file" id="file-input" accept=".xyz,.txt" hidden />
+    </div>
+    <div id="file-meta" class="file-meta"></div>
+  </header>
+
+  <div id="warning-banner" class="warning-banner"></div>
+
+  <div id="controls-bar" class="controls-bar">
+    <span id="step-badge" class="step-badge">0 steps applied</span>
+    <div class="export-buttons">
+      <button id="btn-reset" class="btn-small danger">Reset to original</button>
+      <button id="export-xyz" class="btn-small">Download modified XYZ</button>
+    </div>
+  </div>
+
+  <div id="empty-state" class="empty-state">
+    No file loaded yet. Drop or select an .xyz file above to align, rotate and translate its coordinates.
+  </div>
+
+  <main id="app-main" class="app-main">
+
+    <section class="panel viewer-panel" id="viewer-panel">
+      <div class="panel-toolbar">
+        <button id="reset-view" class="btn-small">Reset view</button>
+        <span class="toolbar-divider"></span>
+        <label class="filter-label" for="bond-tolerance">Bond radius</label>
+        <input type="range" id="bond-tolerance" min="0" max="30" step="1" value="8" />
+        <span id="bond-tolerance-label" class="filter-label">8%</span>
+        <span class="toolbar-divider"></span>
+        <label class="toggle-switch" for="axes-toggle" title="X/Y/Z coordinate axes, anchored at the true origin (0,0,0).">
+          <input type="checkbox" id="axes-toggle" checked />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">Show axes</span>
+        </label>
+      </div>
+
+      <div class="panel-toolbar" id="selection-row" style="display:none;">
+        <button id="clear-selection" class="btn-small">Clear selection</button>
+        <div id="selection-chips" class="chips"></div>
+      </div>
+
+      <div id="viewer-3d" class="viewer-3d">
+        <div id="viewer-legend" class="viewer-legend"></div>
+      </div>
+
+      <div class="atom-list-panel" id="atom-list-panel">
+        <div class="atom-list-header">
+          <span class="atom-list-title">Atoms</span>
+          <input type="text" id="atom-search" placeholder="Search element or number…" autocomplete="off" />
+        </div>
+
+        <div class="atom-list-wrap">
+          <table class="atom-list-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>El.</th>
+                <th>x</th>
+                <th>y</th>
+                <th>z</th>
+              </tr>
+            </thead>
+            <tbody id="atom-list-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel content-panel" id="content-panel">
+      <div class="panel-toolbar tab-bar">
+        <button id="tab-transform" class="btn-small active" data-tab="transform">Transform</button>
+        <button id="tab-log" class="btn-small" data-tab="log">Log</button>
+      </div>
+
+      <div class="xform-pane" id="pane-transform">
+
+        <div class="xform-group">
+          <h3>1. Origin</h3>
+          <p class="xform-hint">Moves the centroid of the selected atoms — or of all atoms, if none are selected — to (0, 0, 0).</p>
+          <button id="btn-origin" class="btn-small">Set origin from selection</button>
+          <div class="xform-selection-note" id="origin-note"></div>
+        </div>
+
+        <div class="xform-group">
+          <h3>2. Align to axes</h3>
+          <p class="xform-hint">
+            Assign one or more selected atoms to an X, Y and/or Z group — like <code>-x 2 -y 3 -z 4</code> — then run.
+            Any combination works (X only, X+Y, or X+Y+Z); atoms already used for the origin can be reused here.
+          </p>
+          <div class="xform-row">
+            <button id="btn-assign-x" class="btn-small" disabled>Set X group from selection</button>
+            <button id="btn-assign-y" class="btn-small" disabled>Set Y group from selection</button>
+            <button id="btn-assign-z" class="btn-small" disabled>Set Z group from selection</button>
+          </div>
+
+          <div class="group-rows">
+            <div class="group-row"><span class="group-label group-label-x">X</span><div class="chips" id="group-x-chips"></div></div>
+            <div class="group-row"><span class="group-label group-label-y">Y</span><div class="chips" id="group-y-chips"></div></div>
+            <div class="group-row"><span class="group-label group-label-z">Z</span><div class="chips" id="group-z-chips"></div></div>
+          </div>
+
+          <div class="xform-row" style="margin-top:10px;">
+            <button id="btn-run-axes" class="btn-small" disabled>Run alignment</button>
+            <button id="btn-clear-groups" class="btn-small">Clear groups</button>
+          </div>
+        </div>
+
+
+        <div class="xform-group">
+          <h3>3. Rotate (°)</h3>
+          <p class="xform-hint">Rotation about the x-, y- and z-axis, applied in that order (matches <code>-r x y z</code>).</p>
+          <div class="xform-row">
+            <label>X <input type="number" id="rot-x" value="0" step="0.01" /></label>
+            <label>Y <input type="number" id="rot-y" value="0" step="0.01" /></label>
+            <label>Z <input type="number" id="rot-z" value="0" step="0.01" /></label>
+            <button id="btn-rotate" class="btn-small">Apply rotation</button>
+          </div>
+        </div>
+
+        <div class="xform-group">
+          <h3>4. Translate (Å)</h3>
+          <div class="xform-row">
+            <label>X <input type="number" id="trans-x" value="0" step="0.01" /></label>
+            <label>Y <input type="number" id="trans-y" value="0" step="0.01" /></label>
+            <label>Z <input type="number" id="trans-z" value="0" step="0.01" /></label>
+            <button id="btn-translate" class="btn-small">Apply translation</button>
+          </div>
+        </div>
+
+        <div class="xform-group">
+          <h3>5. Custom rotation matrix</h3>
+          <p class="xform-hint">3×3 matrix applied directly to the coordinates (matches <code>-m x1 y1 z1 x2 y2 z2 x3 y3 z3</code>), e.g. -1 0 0 / 0 -1 0 / 0 0 -1 to invert.</p>
+          <div class="matrix-grid" id="matrix-grid"></div>
+          <button id="btn-matrix" class="btn-small">Apply matrix</button>
+        </div>
+
+      </div>
+
+      <div class="log-pane" id="pane-log" style="display:none;">
+        <div id="log-empty" class="log-empty">No steps applied yet.</div>
+        <pre id="log-output" class="log-output"></pre>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="static/vendor/3dmol.min.js"></script>
+  <script src="static/js/chem.js"></script>
+  <script src="static/js/parse.js"></script>
+  <script src="static/js/align.js"></script>
+  <script src="static/js/viewer.js"></script>
+  <script src="static/js/export.js"></script>
+  <script src="static/js/ui.js"></script>
+  <script src="static/js/app.js"></script>
+</body>
+</html>
