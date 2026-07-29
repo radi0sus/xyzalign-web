@@ -77,8 +77,8 @@
       : "No selection — will use the centroid of all atoms.";
   }
 
-  function renderAll(keepView) {
-    UI.renderAtomList(state.atoms, state.selectedNums, state.searchTerm, toggleSelection);
+  function renderAll(keepView, focusNum) {
+    UI.renderAtomList(state.atoms, state.selectedNums, state.searchTerm, toggleSelection, focusNum);
     UI.renderSelectionChips(state.atoms, state.selectedNums, (num) => {
       state.selectedNums.delete(num);
       renderAll(true);
@@ -95,7 +95,7 @@
   function toggleSelection(num) {
     if (state.selectedNums.has(num)) state.selectedNums.delete(num);
     else state.selectedNums.add(num);
-    renderAll(true);
+    renderAll(true, num);
   }
 
   function loadFile(file) {
@@ -242,9 +242,15 @@
         : "method: sequential (xyzalign.py-style), X prioritized over Y over Z";
       const stepsText = log.map((s) => `  · ${s.label} (vector: ${fmtVec(s.vec)})`).join("\n");
       const inversionNote = result.inverted ? "\n  ⚠️ this step inverted the molecule's chirality (determinant = -1)" : "";
-      pushLog(`Run alignment [${methodNote}]: ${header}\n${stepsText}${inversionNote}`);
+      const mirroredNote = result.mirroredGroups
+        ? "\n  ⚠️ the chosen X/Y/Z atoms form a left-handed triple - a pure rotation can't map that cleanly onto the right-handed X/Y/Z axes, so the fit above is a poor compromise. Try swapping which atoms are assigned to two of the axes (e.g. X ↔ Y)."
+        : "";
+      pushLog(`Run alignment [${methodNote}]: ${header}\n${stepsText}${inversionNote}${mirroredNote}`);
       if (result.inverted) {
         showInversionWarning("The sequential alignment inverted the molecule's chirality in at least one intermediate step (determinant = -1). Try the least-squares (Kabsch) toggle, which never does this.");
+      }
+      if (result.mirroredGroups) {
+        showInversionWarning("The X/Y/Z atoms you picked form a left-handed triple, so no pure rotation can fit them cleanly onto the (right-handed) X/Y/Z axes - the result above is a forced compromise, not a bug. Try swapping which atoms are assigned to two of the axes (e.g. X ↔ Y) to make the fit clean.");
       }
       renderAll(true);
     });

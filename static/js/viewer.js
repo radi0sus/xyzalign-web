@@ -116,7 +116,7 @@ window.XA_VIEWER = (() => {
 
     const elements = [...new Set(atoms.map((a) => a.element))];
     for (const el of elements) {
-      model.setStyle({ elem: el }, { sphere: { radius: 0.28, color: Elements.getColor(el) } });
+      model.setStyle({ elem: el }, { sphere: { radius: Elements.getViewerRadius(el), color: Elements.getColor(el) } });
     }
 
     for (const a of atoms) {

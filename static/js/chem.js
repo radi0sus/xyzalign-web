@@ -35,7 +35,12 @@ window.XA_ELEMENTS = (() => {
   };
 
   const elementColorsDark = { C: "#9a9a9a" };
-  const elementColorsLight = { H: "#b3b3b3" };
+  const elementColorsLight = { H: "#dcdcdc" };
+
+  // Sphere radius used by the 3D viewer, keyed by element - not the
+  // covalent radius above (which is only for bond detection). H atoms
+  // are rendered a bit smaller than everything else.
+  const viewerRadii = { H: 0.20, default: 0.28 };
 
   function prefersDarkMode() {
     return (
@@ -47,6 +52,10 @@ window.XA_ELEMENTS = (() => {
 
   function getCovRadius(element) {
     return covRadii[element] || 1.5;
+  }
+
+  function getViewerRadius(element) {
+    return viewerRadii[element] || viewerRadii.default;
   }
 
   function getColor(element) {
@@ -76,5 +85,5 @@ window.XA_ELEMENTS = (() => {
     return bonds;
   }
 
-  return { getCovRadius, getColor, findBonds, distance };
+  return { getCovRadius, getColor, getViewerRadius, findBonds, distance };
 })();

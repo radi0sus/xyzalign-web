@@ -284,13 +284,32 @@ window.XA_MATH = (() => {
 
     const vectors = groups.map((g) => centroid(groupOf(atoms, g.nums)));
     const targets = groups.map((g) => g.target);
+
+    // If all three X/Y/Z groups are given, check whether the chosen atoms
+    // form a right-handed triple, like the target axes do. A *proper*
+    // rotation (det = +1, which is all this solver ever produces) can
+    // only ever map a right-handed set of vectors onto another
+    // right-handed set - it can never turn a left-handed one into a
+    // right-handed one, that needs a reflection. So if the chosen X/Y/Z
+    // atoms happen to form a left-handed triple, no rotation can land all
+    // three cleanly on their target axes; the least-squares fit is then
+    // forced into a poor, twisted compromise rather than failing loudly.
+    let mirroredGroups = false;
+    if (groups.length === 3) {
+      const [vx, vy, vz] = vectors;
+      const triple = vx[0] * (vy[1] * vz[2] - vy[2] * vz[1])
+                   - vx[1] * (vy[0] * vz[2] - vy[2] * vz[0])
+                   + vx[2] * (vy[0] * vz[1] - vy[1] * vz[0]);
+      mirroredGroups = triple < 0;
+    }
+
     const R = kabschRotation(vectors, targets);
     const newAtoms = applyRowMatrix(atoms, transpose(R));
     const log = groups.map((g, i) => ({
       label: `least-squares fit: ${g.label} atom(s) [${g.nums.join(", ")}] → ${g.label}-axis`,
       vec: vectors[i]
     }));
-    return { atoms: newAtoms, log, R };
+    return { atoms: newAtoms, log, R, mirroredGroups };
   }
 
   // arbitrary-size atom groups (one or more atoms per axis), e.g. the

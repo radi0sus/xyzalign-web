@@ -3,12 +3,16 @@
 window.XA_UI = (() => {
   const Elements = window.XA_ELEMENTS;
 
-  function renderAtomList(atoms, selectedNums, searchTerm, onRowClick) {
+  function renderAtomList(atoms, selectedNums, searchTerm, onRowClick, scrollToNum) {
     const body = document.getElementById("atom-list-body");
     const term = (searchTerm || "").trim().toLowerCase();
 
     const filtered = term
-      ? atoms.filter((a) => a.element.toLowerCase().includes(term) || String(a.num) === term)
+      ? atoms.filter((a) =>
+          a.element.toLowerCase().includes(term) ||
+          String(a.num) === term ||
+          `${a.element}${a.num}`.toLowerCase() === term
+        )
       : atoms;
 
     if (filtered.length === 0) {
@@ -18,7 +22,7 @@ window.XA_UI = (() => {
 
     body.innerHTML = filtered.map((a) => `
       <tr data-num="${a.num}" class="${selectedNums.has(a.num) ? "selected" : ""}">
-        <td>${a.num}</td>
+        <td>${a.element}${a.num}</td>
         <td class="el-cell"><span class="el-swatch" style="background:${Elements.getColor(a.element)}"></span>${a.element}</td>
         <td>${a.x.toFixed(4)}</td>
         <td>${a.y.toFixed(4)}</td>
@@ -29,6 +33,33 @@ window.XA_UI = (() => {
     body.querySelectorAll("tr[data-num]").forEach((row) => {
       row.addEventListener("click", () => onRowClick(Number(row.dataset.num)));
     });
+
+    if (scrollToNum != null) {
+      const target = body.querySelector(`tr[data-num="${scrollToNum}"]`);
+      if (target) scrollRowIntoView(target);
+    }
+  }
+
+  // Manual scroll instead of target.scrollIntoView(): the atom table has a
+  // sticky <thead>, and scrollIntoView's default block alignment scrolls
+  // the row to the very top edge of the scroll container - which puts it
+  // right behind the sticky header (most visible for the first row: the
+  // container can't scroll further up, so the row stays hidden under the
+  // header). Account for the header's height explicitly instead.
+  function scrollRowIntoView(row) {
+    const wrap = row.closest(".atom-list-wrap");
+    if (!wrap) { row.scrollIntoView({ block: "nearest", behavior: "smooth" }); return; }
+    const thead = wrap.querySelector("thead");
+    const headerHeight = thead ? thead.getBoundingClientRect().height : 0;
+    const wrapRect = wrap.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const hiddenAboveHeader = rowRect.top - wrapRect.top - headerHeight;
+    const hiddenBelowBottom = rowRect.bottom - wrapRect.bottom;
+    if (hiddenAboveHeader < 0) {
+      wrap.scrollBy({ top: hiddenAboveHeader, behavior: "smooth" });
+    } else if (hiddenBelowBottom > 0) {
+      wrap.scrollBy({ top: hiddenBelowBottom, behavior: "smooth" });
+    }
   }
 
   function renderChipsInto(containerId, atoms, nums, onRemove) {
@@ -51,11 +82,11 @@ window.XA_UI = (() => {
   function renderSelectionChips(atoms, selectedNums, onRemove) {
     const row = document.getElementById("selection-row");
     if (selectedNums.size === 0) {
-      row.style.display = "none";
+      row.classList.add("is-empty");
       document.getElementById("selection-chips").innerHTML = "";
       return;
     }
-    row.style.display = "flex";
+    row.classList.remove("is-empty");
     renderChipsInto("selection-chips", atoms, selectedNums, onRemove);
   }
 
