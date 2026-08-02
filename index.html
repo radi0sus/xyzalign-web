@@ -8,6 +8,8 @@
 </head>
 <body>
 
+  <div id="page-dropzone-overlay" class="page-dropzone-overlay">Drop .xyz file to load</div>
+
   <header class="app-header">
     <h1>xyzalign web</h1>
     <div id="dropzone" class="dropzone">
@@ -15,14 +17,28 @@
       <input type="file" id="file-input" accept=".xyz,.txt" hidden />
     </div>
     <div id="file-meta" class="file-meta"></div>
+    <button id="btn-paste-clipboard" class="btn-small" type="button">Get XYZ data from clipboard</button>
   </header>
 
   <div id="warning-banner" class="warning-banner"></div>
+
+  <div id="paste-modal" class="paste-modal">
+    <div class="paste-modal-box">
+      <h3>Paste XYZ data</h3>
+      <p class="xform-hint">Click into the field below and press <code>Ctrl+V</code> (or <code>Cmd+V</code>) to paste. It loads automatically as soon as you paste.</p>
+      <textarea id="paste-textarea" class="paste-textarea" placeholder="Click here, then paste (Ctrl+V)…" spellcheck="false"></textarea>
+      <div class="paste-modal-actions">
+        <button id="paste-cancel" class="btn-small">Cancel</button>
+        <button id="paste-confirm" class="btn-small">Load</button>
+      </div>
+    </div>
+  </div>
 
   <div id="controls-bar" class="controls-bar">
     <span id="step-badge" class="step-badge">0 steps applied</span>
     <div class="export-buttons">
       <button id="btn-reset" class="btn-small danger">Reset to original</button>
+      <button id="copy-xyz" class="btn-small">Copy modified XYZ</button>
       <button id="export-xyz" class="btn-small">Download modified XYZ</button>
     </div>
   </div>

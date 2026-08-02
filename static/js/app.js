@@ -98,39 +98,49 @@
     renderAll(true, num);
   }
 
+  function applyParsed(parsed, sourceName) {
+    if (parsed.atoms.length === 0) {
+      alert("Could not find any atom lines (element x y z) in this data.");
+      return false;
+    }
+    state.filename = sourceName;
+    state.header = parsed.header;
+    state.originalAtoms = parsed.atoms;
+    state.atoms = parsed.atoms.map((a) => ({ ...a }));
+    state.selectedNums = new Set();
+    state.groupX = new Set();
+    state.groupY = new Set();
+    state.groupZ = new Set();
+    state.searchTerm = "";
+    state.log = [];
+    state.stepCount = 0;
+
+    document.getElementById("file-meta").textContent = `${sourceName} — ${parsed.atoms.length} atoms`;
+    document.getElementById("empty-state").style.display = "none";
+    document.getElementById("app-main").style.display = "grid";
+    document.getElementById("controls-bar").style.display = "flex";
+    document.getElementById("atom-search").value = "";
+    document.getElementById("step-badge").textContent = "0 steps applied";
+    UI.renderLog([]);
+    hideInversionWarning();
+
+    Viewer.load(state.atoms);
+    renderAll(false);
+    return true;
+  }
+
   function loadFile(file) {
     const reader = new FileReader();
     reader.onload = () => {
       const parsed = Parse.parseXyz(reader.result, file.name);
-      if (parsed.atoms.length === 0) {
-        alert("Could not find any atom lines (element x y z) in this file.");
-        return;
-      }
-      state.filename = file.name;
-      state.header = parsed.header;
-      state.originalAtoms = parsed.atoms;
-      state.atoms = parsed.atoms.map((a) => ({ ...a }));
-      state.selectedNums = new Set();
-      state.groupX = new Set();
-      state.groupY = new Set();
-      state.groupZ = new Set();
-      state.searchTerm = "";
-      state.log = [];
-      state.stepCount = 0;
-
-      document.getElementById("file-meta").textContent = `${file.name} — ${parsed.atoms.length} atoms`;
-      document.getElementById("empty-state").style.display = "none";
-      document.getElementById("app-main").style.display = "grid";
-      document.getElementById("controls-bar").style.display = "flex";
-      document.getElementById("atom-search").value = "";
-      document.getElementById("step-badge").textContent = "0 steps applied";
-      UI.renderLog([]);
-      hideInversionWarning();
-
-      Viewer.load(state.atoms);
-      renderAll(false);
+      applyParsed(parsed, file.name);
     };
     reader.readAsText(file);
+  }
+
+  function loadPastedText(text) {
+    const parsed = Parse.parseXyz(text, "clipboard.xyz");
+    return applyParsed(parsed, "Pasted from clipboard");
   }
 
   function wireDropzone() {
@@ -140,15 +150,89 @@
     fileInput.addEventListener("change", () => {
       if (fileInput.files[0]) loadFile(fileInput.files[0]);
     });
+
+    // Header dropzone: keep its own visual feedback, and stop the event from
+    // also bubbling up to the page-wide handlers below (avoids loadFile firing twice).
     ["dragover", "dragenter"].forEach((evt) =>
-      dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add("dragover"); })
+      dropzone.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); dropzone.classList.add("dragover"); })
     );
     ["dragleave", "drop"].forEach((evt) =>
-      dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.remove("dragover"); })
+      dropzone.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); dropzone.classList.remove("dragover"); })
     );
     dropzone.addEventListener("drop", (e) => {
       const file = e.dataTransfer.files[0];
       if (file) loadFile(file);
+    });
+
+    // Whole-page dropzone: lets the user drop a file anywhere in the window,
+    // not just on the header dropzone, while the click-to-browse menu still works.
+    const overlay = document.getElementById("page-dropzone-overlay");
+    let dragDepth = 0;
+
+    const hasFiles = (e) =>
+      !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+
+    window.addEventListener("dragenter", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth++;
+      overlay.classList.add("active");
+    });
+    window.addEventListener("dragover", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+    });
+    window.addEventListener("dragleave", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) overlay.classList.remove("active");
+    });
+    window.addEventListener("drop", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth = 0;
+      overlay.classList.remove("active");
+      const file = e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+  }
+
+  function wirePasteModal() {
+    const modal = document.getElementById("paste-modal");
+    const textarea = document.getElementById("paste-textarea");
+    const openBtn = document.getElementById("btn-paste-clipboard");
+    const cancelBtn = document.getElementById("paste-cancel");
+    const confirmBtn = document.getElementById("paste-confirm");
+
+    function openModal() {
+      textarea.value = "";
+      modal.style.display = "flex";
+      textarea.focus();
+    }
+    function closeModal() {
+      modal.style.display = "none";
+      textarea.value = "";
+    }
+
+    openBtn.addEventListener("click", openModal);
+    cancelBtn.addEventListener("click", closeModal);
+    modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.style.display === "flex") closeModal();
+    });
+
+    // As soon as a paste lands in the textarea, parse it immediately —
+    // no extra click needed, but the "Load" button remains as a fallback
+    // for manually typed/edited content.
+    textarea.addEventListener("paste", () => {
+      setTimeout(() => {
+        if (textarea.value.trim() && loadPastedText(textarea.value)) closeModal();
+      }, 0);
+    });
+
+    confirmBtn.addEventListener("click", () => {
+      if (textarea.value.trim() && loadPastedText(textarea.value)) closeModal();
     });
   }
 
@@ -310,6 +394,19 @@
       renderAll(false);
     });
 
+    document.getElementById("copy-xyz").addEventListener("click", async () => {
+      if (state.atoms.length === 0) return;
+      const btn = document.getElementById("copy-xyz");
+      const original = btn.textContent;
+      const { ok } = await Export.copyXyz(state.header, state.atoms);
+      btn.textContent = ok ? "Copied!" : "Copy failed";
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.disabled = false;
+      }, 1400);
+    });
+
     document.getElementById("export-xyz").addEventListener("click", () => {
       if (state.atoms.length === 0) return;
       Export.exportXyz(state.header, state.atoms, state.filename);
@@ -328,5 +425,6 @@
     Viewer.init("viewer-3d");
     wireDropzone();
     wireControls();
+    wirePasteModal();
   });
 })();
