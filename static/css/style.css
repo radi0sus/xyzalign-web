@@ -235,9 +235,38 @@ input[type="text"]:focus, input[type="number"]:focus { border-color: var(--accen
 .chip-remove:hover { color: var(--danger); }
 
 #selection-row {
-  transition: opacity 0.12s ease;
+  /* Always visible now (Select all + element pills are useful even before
+     anything is selected). Only the chip strip below gets a fixed height:
+     the button/pill row is stable per loaded file, but the chip count
+     changes on every click, and letting *that* grow the row is what used
+     to resize (“pump”) the 3D viewer above it. */
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
 }
-#selection-row.is-empty { opacity: 0; pointer-events: none; }
+.selection-row-buttons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.element-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.element-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--panel-soft); color: var(--text);
+  padding: 3px 10px 3px 8px; font-size: 0.78rem; font: inherit; cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.element-pill:hover { border-color: var(--pill-color, var(--accent)); }
+.element-pill.partial {
+  background: color-mix(in srgb, var(--pill-color, var(--accent)) 20%, var(--panel-soft));
+  border-color: color-mix(in srgb, var(--pill-color, var(--accent)) 55%, var(--border));
+}
+.element-pill.active {
+  background: var(--pill-color, var(--accent));
+  border-color: var(--pill-color, var(--accent));
+  color: #fff;
+}
+.element-pill.active .el-swatch { border-color: rgba(255, 255, 255, 0.65); }
+
+#selection-chips { min-height: 24px; max-height: 30px; overflow-y: auto; align-content: flex-start; }
 
 .viewer-3d { flex: 1; min-height: 180px; position: relative; }
 
@@ -257,9 +286,11 @@ input[type="text"]:focus, input[type="number"]:focus { border-color: var(--accen
   flex-shrink: 0; display: flex; flex-direction: column;
   border-top: 1px solid var(--border); background: var(--panel-soft);
 }
-.atom-list-header { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.atom-list-header { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
 .atom-list-title { font-size: 0.78rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
-#atom-search { flex: 1; min-width: 0; padding: 3px 8px; font-size: 0.8rem; }
+#atom-search { flex: 1; min-width: 90px; padding: 3px 8px; font-size: 0.8rem; }
+#exclude-count { white-space: nowrap; }
+#btn-reset-exclusions { flex-shrink: 0; }
 .atom-list-wrap { flex: 1; min-height: 0; overflow: auto; }
 .atom-list-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 .atom-list-table th {
@@ -271,7 +302,12 @@ input[type="text"]:focus, input[type="number"]:focus { border-color: var(--accen
 .atom-list-table tbody tr { cursor: pointer; }
 .atom-list-table tbody tr:hover td { background: var(--focus-ring); color: var(--text); }
 .atom-list-table tbody tr.selected td { background: var(--accent); color: #fff; }
+.atom-list-table tbody tr.excluded td { opacity: 0.45; }
+.atom-list-table tbody tr.excluded:hover td { background: none; color: var(--muted); }
+.atom-list-table tbody tr.excluded td:first-child { text-decoration: line-through; }
 .atom-list-table .el-cell { font-weight: 600; color: var(--text); }
+.exclude-cell { cursor: default; }
+.atom-exclude-checkbox { cursor: pointer; accent-color: var(--danger); }
 .el-swatch {
   display: inline-block; width: 9px; height: 9px; border-radius: 50%;
   margin-right: 5px; border: 1px solid var(--border-strong); vertical-align: middle;

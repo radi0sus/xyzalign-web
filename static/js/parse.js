@@ -43,7 +43,10 @@ window.XA_PARSE = (() => {
   }
 
   function buildXyzText(header, atoms) {
-    const lines = [...header];
+    // Line 1 is always the atom count; recomputed from the atoms actually
+    // being written so excluded atoms (which never reach this function)
+    // don't leave a stale count behind. Line 2 (comment) is kept verbatim.
+    const lines = [String(atoms.length), header[1] !== undefined ? header[1] : ""];
     for (const a of atoms) {
       lines.push(`${a.element.padEnd(2)}  ${formatFixed(a.x)}  ${formatFixed(a.y)}  ${formatFixed(a.z)}`);
     }

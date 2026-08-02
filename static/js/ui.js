@@ -3,7 +3,7 @@
 window.XA_UI = (() => {
   const Elements = window.XA_ELEMENTS;
 
-  function renderAtomList(atoms, selectedNums, searchTerm, onRowClick, scrollToNum) {
+  function renderAtomList(atoms, selectedNums, excludedNums, searchTerm, onRowClick, onExcludeToggle, scrollToNum) {
     const body = document.getElementById("atom-list-body");
     const term = (searchTerm || "").trim().toLowerCase();
 
@@ -16,22 +16,41 @@ window.XA_UI = (() => {
       : atoms;
 
     if (filtered.length === 0) {
-      body.innerHTML = `<tr><td colspan="5" class="atom-list-empty">No matching atoms.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="6" class="atom-list-empty">No matching atoms.</td></tr>`;
       return;
     }
 
-    body.innerHTML = filtered.map((a) => `
-      <tr data-num="${a.num}" class="${selectedNums.has(a.num) ? "selected" : ""}">
+    body.innerHTML = filtered.map((a) => {
+      const isExcluded = excludedNums.has(a.num);
+      const rowClasses = [selectedNums.has(a.num) ? "selected" : "", isExcluded ? "excluded" : ""].filter(Boolean).join(" ");
+      return `
+      <tr data-num="${a.num}" class="${rowClasses}">
         <td>${a.element}${a.num}</td>
         <td class="el-cell"><span class="el-swatch" style="background:${Elements.getColor(a.element)}"></span>${a.element}</td>
         <td>${a.x.toFixed(4)}</td>
         <td>${a.y.toFixed(4)}</td>
         <td>${a.z.toFixed(4)}</td>
+        <td class="exclude-cell">
+          <input type="checkbox" class="atom-exclude-checkbox" data-num="${a.num}" ${isExcluded ? "checked" : ""} title="${isExcluded ? "Include this atom again" : "Exclude this atom (hidden from view, copy & export)"}" />
+        </td>
       </tr>
-    `).join("");
+    `;
+    }).join("");
 
     body.querySelectorAll("tr[data-num]").forEach((row) => {
-      row.addEventListener("click", () => onRowClick(Number(row.dataset.num)));
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".atom-exclude-checkbox")) return;
+        const num = Number(row.dataset.num);
+        if (excludedNums.has(num)) return; // excluded atoms can't be selected
+        onRowClick(num);
+      });
+    });
+
+    body.querySelectorAll(".atom-exclude-checkbox").forEach((cb) => {
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => {
+        onExcludeToggle(Number(cb.dataset.num), cb.checked);
+      });
     });
 
     if (scrollToNum != null) {
@@ -80,14 +99,33 @@ window.XA_UI = (() => {
   }
 
   function renderSelectionChips(atoms, selectedNums, onRemove) {
-    const row = document.getElementById("selection-row");
     if (selectedNums.size === 0) {
-      row.classList.add("is-empty");
       document.getElementById("selection-chips").innerHTML = "";
       return;
     }
-    row.classList.remove("is-empty");
     renderChipsInto("selection-chips", atoms, selectedNums, onRemove);
+  }
+
+  // elementGroups: [{ element, nums }] - nums are the (visible) atom .num
+  // values for that element. A pill is "active" when every one of those
+  // atoms is currently selected, "partial" when only some are, so clicking
+  // it toggles the whole element's atoms in or out of the selection.
+  function renderElementPills(containerId, elementGroups, selectedNums, onClick) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = elementGroups.map(({ element, nums }) => {
+      const color = Elements.getColor(element);
+      const selectedCount = nums.filter((n) => selectedNums.has(n)).length;
+      const stateClass = selectedCount === 0 ? "" : (selectedCount === nums.length ? "active" : "partial");
+      return `
+        <button type="button" class="element-pill ${stateClass}" data-element="${element}" style="--pill-color:${color}" title="Select all ${element} atoms (${nums.length})">
+          <span class="el-swatch" style="background:${color}"></span>${element}
+        </button>
+      `;
+    }).join("");
+
+    el.querySelectorAll(".element-pill").forEach((btn) => {
+      btn.addEventListener("click", () => onClick(btn.dataset.element));
+    });
   }
 
   function buildMatrixGrid(defaultMatrix) {
@@ -142,5 +180,5 @@ window.XA_UI = (() => {
     out.textContent = entries.join("\n\n");
   }
 
-  return { renderAtomList, renderSelectionChips, renderChipsInto, buildMatrixGrid, readMatrixGrid, setupTabs, renderLog };
+  return { renderAtomList, renderSelectionChips, renderChipsInto, renderElementPills, buildMatrixGrid, readMatrixGrid, setupTabs, renderLog };
 })();

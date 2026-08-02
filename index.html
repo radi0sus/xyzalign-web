@@ -64,8 +64,15 @@
         </label>
       </div>
 
-      <div class="panel-toolbar is-empty" id="selection-row">
-        <button id="clear-selection" class="btn-small">Clear selection</button>
+      <div class="panel-toolbar" id="selection-row">
+        <div class="selection-row-buttons">
+          <button id="select-all" class="btn-small">Select all</button>
+          <div id="element-pills" class="element-pills"></div>
+          <span class="toolbar-divider"></span>
+          <button id="invert-selection" class="btn-small">Invert selection</button>
+          <button id="clear-selection" class="btn-small">Clear selection</button>
+          <button id="exclude-selection" class="btn-small danger">Exclude selected atom(s)</button>
+        </div>
         <div id="selection-chips" class="chips"></div>
       </div>
 
@@ -77,6 +84,8 @@
         <div class="atom-list-header">
           <span class="atom-list-title">Atoms</span>
           <input type="text" id="atom-search" placeholder="Search element or number…" autocomplete="off" />
+          <span id="exclude-count" class="filter-label"></span>
+          <button id="btn-reset-exclusions" class="btn-small" disabled title="Include all currently excluded atoms again">Include all atoms</button>
         </div>
 
         <div class="atom-list-wrap">
@@ -88,6 +97,7 @@
                 <th>x</th>
                 <th>y</th>
                 <th>z</th>
+                <th>Excl.</th>
               </tr>
             </thead>
             <tbody id="atom-list-body"></tbody>

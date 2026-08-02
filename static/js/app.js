@@ -13,6 +13,7 @@
     originalAtoms: [],
     atoms: [],
     selectedNums: new Set(),
+    excludedNums: new Set(),
     groupX: new Set(),
     groupY: new Set(),
     groupZ: new Set(),
@@ -31,6 +32,48 @@
 
   function selectionAtoms() {
     return state.atoms.filter((a) => state.selectedNums.has(a.num));
+  }
+
+  // Atoms that are currently visible (i.e. not excluded). Excluded atoms
+  // still live in state.atoms and move along with every transform, they're
+  // just hidden from the viewer, the atom-list selection, copy and export.
+  function visibleAtoms(list) {
+    return list.filter((a) => !state.excludedNums.has(a.num));
+  }
+
+  // Atoms for the 3D viewer need an .index that matches their position in
+  // the array actually handed to the viewer (bond-detection and click
+  // mapping both rely on that), so excluded atoms are dropped and the
+  // remaining ones are re-indexed here rather than in state.atoms itself.
+  function viewerAtoms() {
+    return visibleAtoms(state.atoms).map((a, i) => ({ ...a, index: i }));
+  }
+
+  // Axis-group / origin computations should ignore excluded members, but
+  // the underlying group Sets are left untouched so members reappear if
+  // the atom is included again later.
+  function activeNums(numSet) {
+    return [...numSet].filter((n) => !state.excludedNums.has(n));
+  }
+
+  // One entry per distinct element among the currently visible atoms, in
+  // the same H-then-C-then-alphabetical order the viewer legend uses, each
+  // carrying the atom .num values it covers - used to drive the element
+  // selection pills.
+  function elementGroupsFrom(atomList) {
+    const priority = { H: 0, C: 1 };
+    const map = new Map();
+    for (const a of atomList) {
+      if (!map.has(a.element)) map.set(a.element, []);
+      map.get(a.element).push(a.num);
+    }
+    return [...map.entries()]
+      .sort(([ea], [eb]) => {
+        const pa = priority[ea] ?? 2, pb = priority[eb] ?? 2;
+        if (pa !== pb) return pa - pb;
+        return ea.localeCompare(eb);
+      })
+      .map(([element, nums]) => ({ element, nums }));
   }
 
   function selectionLabel() {
@@ -68,27 +111,44 @@
     document.getElementById("btn-assign-x").disabled = !hasSelection;
     document.getElementById("btn-assign-y").disabled = !hasSelection;
     document.getElementById("btn-assign-z").disabled = !hasSelection;
+    document.getElementById("exclude-selection").disabled = !hasSelection;
+    document.getElementById("invert-selection").disabled = !hasSelection;
+    document.getElementById("clear-selection").disabled = !hasSelection;
+    document.getElementById("select-all").disabled = visibleAtoms(state.atoms).length === 0;
 
-    const anyGroup = state.groupX.size > 0 || state.groupY.size > 0 || state.groupZ.size > 0;
+    const anyGroup = activeNums(state.groupX).length > 0 || activeNums(state.groupY).length > 0 || activeNums(state.groupZ).length > 0;
     document.getElementById("btn-run-axes").disabled = !anyGroup;
 
     document.getElementById("origin-note").textContent = hasSelection
       ? `Will use selected atom(s): ${selectionLabel()}`
-      : "No selection — will use the centroid of all atoms.";
+      : state.excludedNums.size > 0
+        ? "No selection — will use the centroid of all included (non-excluded) atoms."
+        : "No selection — will use the centroid of all atoms.";
+
+    const excludeCountEl = document.getElementById("exclude-count");
+    if (excludeCountEl) {
+      excludeCountEl.textContent = state.excludedNums.size > 0
+        ? `${state.excludedNums.size} excluded`
+        : "";
+    }
+    document.getElementById("btn-reset-exclusions").disabled = state.excludedNums.size === 0;
   }
 
   function renderAll(keepView, focusNum) {
-    UI.renderAtomList(state.atoms, state.selectedNums, state.searchTerm, toggleSelection, focusNum);
+    UI.renderAtomList(state.atoms, state.selectedNums, state.excludedNums, state.searchTerm, toggleSelection, onExcludeToggle, focusNum);
     UI.renderSelectionChips(state.atoms, state.selectedNums, (num) => {
       state.selectedNums.delete(num);
       renderAll(true);
     });
-    UI.renderChipsInto("group-x-chips", state.atoms, state.groupX, (num) => { state.groupX.delete(num); renderAll(true); });
-    UI.renderChipsInto("group-y-chips", state.atoms, state.groupY, (num) => { state.groupY.delete(num); renderAll(true); });
-    UI.renderChipsInto("group-z-chips", state.atoms, state.groupZ, (num) => { state.groupZ.delete(num); renderAll(true); });
+    UI.renderElementPills("element-pills", elementGroupsFrom(visibleAtoms(state.atoms)), state.selectedNums, onElementPillClick);
+    // Group chip display only shows currently non-excluded members; the
+    // underlying Sets keep every member so they reappear once included again.
+    UI.renderChipsInto("group-x-chips", state.atoms, new Set(activeNums(state.groupX)), (num) => { state.groupX.delete(num); renderAll(true); });
+    UI.renderChipsInto("group-y-chips", state.atoms, new Set(activeNums(state.groupY)), (num) => { state.groupY.delete(num); renderAll(true); });
+    UI.renderChipsInto("group-z-chips", state.atoms, new Set(activeNums(state.groupZ)), (num) => { state.groupZ.delete(num); renderAll(true); });
     updateButtonsState();
     const showAxes = document.getElementById("axes-toggle").checked;
-    Viewer.setAtoms(state.atoms);
+    Viewer.setAtoms(viewerAtoms());
     Viewer.render({ selectedNums: state.selectedNums, showAxes, keepView });
   }
 
@@ -96,6 +156,45 @@
     if (state.selectedNums.has(num)) state.selectedNums.delete(num);
     else state.selectedNums.add(num);
     renderAll(true, num);
+  }
+
+  // Clicking an element pill toggles all (visible) atoms of that element in
+  // or out of the selection together: fully selected -> deselect all of
+  // them, otherwise -> select all of them (on top of whatever else is
+  // already selected).
+  function onElementPillClick(element) {
+    const nums = visibleAtoms(state.atoms).filter((a) => a.element === element).map((a) => a.num);
+    if (nums.length === 0) return;
+    const allSelected = nums.every((n) => state.selectedNums.has(n));
+    if (allSelected) nums.forEach((n) => state.selectedNums.delete(n));
+    else nums.forEach((n) => state.selectedNums.add(n));
+    renderAll(true);
+  }
+
+  function excludeNums(nums) {
+    const toExclude = [...nums].filter((n) => !state.excludedNums.has(n));
+    if (toExclude.length === 0) return;
+    const label = labelForNums(toExclude);
+    toExclude.forEach((n) => {
+      state.excludedNums.add(n);
+      state.selectedNums.delete(n);
+    });
+    pushLog(`Exclude atom(s): ${label}`);
+    renderAll(true);
+  }
+
+  function includeNums(nums) {
+    const toInclude = [...nums].filter((n) => state.excludedNums.has(n));
+    if (toInclude.length === 0) return;
+    const label = labelForNums(toInclude);
+    toInclude.forEach((n) => state.excludedNums.delete(n));
+    pushLog(`Include atom(s) again (undo exclude): ${label}`);
+    renderAll(true);
+  }
+
+  function onExcludeToggle(num, excluded) {
+    if (excluded) excludeNums([num]);
+    else includeNums([num]);
   }
 
   function applyParsed(parsed, sourceName) {
@@ -108,6 +207,7 @@
     state.originalAtoms = parsed.atoms;
     state.atoms = parsed.atoms.map((a) => ({ ...a }));
     state.selectedNums = new Set();
+    state.excludedNums = new Set();
     state.groupX = new Set();
     state.groupY = new Set();
     state.groupZ = new Set();
@@ -124,7 +224,7 @@
     UI.renderLog([]);
     hideInversionWarning();
 
-    Viewer.load(state.atoms);
+    Viewer.load(viewerAtoms());
     renderAll(false);
     return true;
   }
@@ -250,11 +350,39 @@
 
     document.getElementById("atom-search").addEventListener("input", (e) => {
       state.searchTerm = e.target.value;
-      UI.renderAtomList(state.atoms, state.selectedNums, state.searchTerm, toggleSelection);
+      UI.renderAtomList(state.atoms, state.selectedNums, state.excludedNums, state.searchTerm, toggleSelection, onExcludeToggle);
+    });
+
+    document.getElementById("select-all").addEventListener("click", () => {
+      const nums = visibleAtoms(state.atoms).map((a) => a.num);
+      if (nums.length === 0) return;
+      state.selectedNums = new Set(nums);
+      renderAll(true);
     });
 
     document.getElementById("clear-selection").addEventListener("click", () => {
       state.selectedNums = new Set();
+      renderAll(true);
+    });
+
+    document.getElementById("invert-selection").addEventListener("click", () => {
+      // Invert only across currently visible (non-excluded) atoms - excluded
+      // atoms can't be selected, so they must never end up in the result.
+      const allVisibleNums = visibleAtoms(state.atoms).map((a) => a.num);
+      state.selectedNums = new Set(allVisibleNums.filter((n) => !state.selectedNums.has(n)));
+      renderAll(true);
+    });
+
+    document.getElementById("exclude-selection").addEventListener("click", () => {
+      if (state.selectedNums.size === 0) return;
+      excludeNums([...state.selectedNums]);
+    });
+
+    document.getElementById("btn-reset-exclusions").addEventListener("click", () => {
+      if (state.excludedNums.size === 0) return;
+      const label = labelForNums([...state.excludedNums]);
+      state.excludedNums = new Set();
+      pushLog(`Include all atoms again (undo all exclusions): ${label}`);
       renderAll(true);
     });
 
@@ -268,7 +396,7 @@
     document.getElementById("btn-origin").addEventListener("click", () => {
       const sel = selectionAtoms();
       const usedAll = sel.length === 0;
-      const basis = usedAll ? state.atoms : sel;
+      const basis = usedAll ? visibleAtoms(state.atoms) : sel;
       const origin = Math3.centroid(basis);
       state.atoms = Math3.subtractOrigin(state.atoms, origin);
       pushLog(
@@ -299,9 +427,9 @@
     });
 
     document.getElementById("btn-run-axes").addEventListener("click", () => {
-      const xNums = [...state.groupX];
-      const yNums = [...state.groupY];
-      const zNums = [...state.groupZ];
+      const xNums = activeNums(state.groupX);
+      const yNums = activeNums(state.groupY);
+      const zNums = activeNums(state.groupZ);
       if (xNums.length === 0 && yNums.length === 0 && zNums.length === 0) return;
 
       const xLabel = xNums.length ? labelForNums(xNums) : null;
@@ -386,6 +514,7 @@
       if (state.originalAtoms.length === 0) return;
       state.atoms = state.originalAtoms.map((a) => ({ ...a }));
       state.selectedNums = new Set();
+      state.excludedNums = new Set();
       state.log = [];
       state.stepCount = 0;
       document.getElementById("step-badge").textContent = "0 steps applied";
@@ -396,9 +525,11 @@
 
     document.getElementById("copy-xyz").addEventListener("click", async () => {
       if (state.atoms.length === 0) return;
+      const toCopy = visibleAtoms(state.atoms);
+      if (toCopy.length === 0) { alert("All atoms are currently excluded — nothing to copy."); return; }
       const btn = document.getElementById("copy-xyz");
       const original = btn.textContent;
-      const { ok } = await Export.copyXyz(state.header, state.atoms);
+      const { ok } = await Export.copyXyz(state.header, toCopy);
       btn.textContent = ok ? "Copied!" : "Copy failed";
       btn.disabled = true;
       setTimeout(() => {
@@ -409,7 +540,9 @@
 
     document.getElementById("export-xyz").addEventListener("click", () => {
       if (state.atoms.length === 0) return;
-      Export.exportXyz(state.header, state.atoms, state.filename);
+      const toExport = visibleAtoms(state.atoms);
+      if (toExport.length === 0) { alert("All atoms are currently excluded — nothing to export."); return; }
+      Export.exportXyz(state.header, toExport, state.filename);
     });
 
     window.addEventListener("resize", () => Viewer.resize());

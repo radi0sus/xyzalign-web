@@ -19,6 +19,9 @@ required — the file is only read locally by the browser.
 - Load an XMol `.xyz` file directly in the browser (drag & drop or file
   picker); the first two header lines (atom count, comment) are kept as-is
   and written back unchanged on export
+- **Get XYZ data from clipboard** — paste xyz text directly (`Ctrl+V`/
+  `Cmd+V`) into a modal instead of loading a file, for quickly trying out
+  coordinates copied from somewhere else
 - Interactive 3D viewer (3Dmol.js) with CPK atom colors, automatically
   detected bonds (adjustable bond-radius tolerance), and click-to-select
   atoms
@@ -26,9 +29,38 @@ required — the file is only read locally by the browser.
   origin (0, 0, 0) — since the whole point of the tool is to see the
   molecule's orientation *relative to the axes*, they never move or follow
   the selection
-- Searchable, sortable atom table synced with the 3D selection
-- **Origin** — move the centroid of the selected atom(s), or of all atoms
-  if none are selected, to (0, 0, 0)
+- Searchable atom table synced with the 3D selection
+- **Select all**, **Invert selection**, **Clear selection**, and **element
+  pills** (one per element present, e.g. "C", "H", "O" …, colored like
+  their CPK atom color) sit in a permanently visible row above the viewer.
+  Clicking an element pill selects (or, if already fully selected,
+  deselects) every atom of that element at once; a pill fills solid when
+  all of its atoms are selected and gets a lighter tint when only some are.
+  The selected-atom chips live in their own fixed-height, scrollable strip
+  so the 3D viewer never resizes as the selection grows or shrinks
+- **Exclude atoms** — remove one or more atoms from view, copy and export
+  without deleting them from the working geometry:
+  - select atom(s) in the viewer, atom table, or an element pill (use
+    **Invert selection** to flip the current pick across all included
+    atoms if that's quicker), then click **Exclude selected atom(s)**, or
+  - tick/untick the checkbox in the **Excl.** column of the atom table for
+    a single atom
+  - excluded atoms are struck through and greyed out in the atom table, no
+    longer rendered in the 3D view, and left out of **Copy modified XYZ**
+    and **Download modified XYZ** (the exported atom count is adjusted
+    accordingly)
+  - **Include all atoms** (next to the atom search field) undoes every
+    exclusion at once
+  - excluding/including atoms is recorded in the log, just like any other
+    step
+  - excluded atoms still move along with every rotation/translation/origin
+    step (so their coordinates stay consistent if you include them again
+    later) but are ignored when *computing* a centroid or axis alignment;
+    if an excluded atom was already part of an **X/Y/Z** group under "2.
+    Align to axes", it temporarily disappears from that group's chip list
+    and reappears automatically once it's included again
+- **Origin** — move the centroid of the selected atom(s), or of all
+  included (non-excluded) atoms if none are selected, to (0, 0, 0)
 - **Align to axes** — assign one or more atoms to an X, Y and/or Z group
   (equivalent to the script's `-x`/`-y`/`-z`, each of which can take
   several atoms) and run the alignment in one step. Any combination works
@@ -73,10 +105,12 @@ index.html
 
 in a modern web browser.
 
-Then drag and drop an xyz file into the drop zone, or click it to browse.
-A typical workflow, equivalent to `xyzalign.py`
+Then drag and drop an xyz file into the drop zone, click it to browse, or
+click **Get XYZ data from clipboard** and paste (`Ctrl+V`/`Cmd+V`) xyz text
+directly.
 
-looks like this in the app:
+A typical workflow, equivalent to `xyzalign.py`, looks like this in the
+app:
 
 1. Select atom 1 in the viewer or atom list, click **Set origin from
    selection**.
