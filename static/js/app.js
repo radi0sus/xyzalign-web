@@ -198,8 +198,12 @@
   }
 
   function applyParsed(parsed, sourceName) {
+    if (parsed.error) {
+      showInversionWarning(parsed.error);
+      return false;
+    }
     if (parsed.atoms.length === 0) {
-      alert("Could not find any atom lines (element x y z) in this data.");
+      showInversionWarning("Could not find any atom lines (element x y z) in this data.");
       return false;
     }
     state.filename = sourceName;
@@ -223,6 +227,7 @@
     document.getElementById("step-badge").textContent = "0 steps applied";
     UI.renderLog([]);
     hideInversionWarning();
+    if (parsed.warnings && parsed.warnings.length) showInversionWarning(parsed.warnings.join(" "));
 
     Viewer.load(viewerAtoms());
     renderAll(false);
@@ -232,14 +237,14 @@
   function loadFile(file) {
     const reader = new FileReader();
     reader.onload = () => {
-      const parsed = Parse.parseXyz(reader.result, file.name);
+      const parsed = Parse.parseAuto(reader.result, file.name);
       applyParsed(parsed, file.name);
     };
     reader.readAsText(file);
   }
 
   function loadPastedText(text) {
-    const parsed = Parse.parseXyz(text, "clipboard.xyz");
+    const parsed = Parse.parseAuto(text, "");
     return applyParsed(parsed, "Pasted from clipboard");
   }
 

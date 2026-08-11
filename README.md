@@ -8,20 +8,25 @@ to the x-, y- and z-axes, arbitrary rotation, translation, custom rotation
 matrices) but replaces the command-line arguments with a 3D viewer, an atom
 list, and buttons for every step.
 
-The app runs entirely in the browser. Open `index.html`, load an xyz file,
-and align it interactively.
+The app runs entirely in the browser. Open `index.html`, load an XYZ, MOL/SDF,
+or MOL2 file, and align it interactively.
 
 No installation, no Python environment, and no upload to any server are
 required — the file is only read locally by the browser.
 
 ## Features
 
-- Load an XMol `.xyz` file directly in the browser (drag & drop or file
-  picker); the first two header lines (atom count, comment) are kept as-is
-  and written back unchanged on export
-- **Get XYZ data from clipboard** — paste xyz text directly (`Ctrl+V`/
-  `Cmd+V`) into a modal instead of loading a file, for quickly trying out
-  coordinates copied from somewhere else
+- Load XMol `.xyz`, MDL V2000 `.mol`/`.sdf`, or Sybyl `.mol2` files directly
+  in the browser (drag & drop or file picker); the format is detected from
+  the file extension when available and otherwise from the content
+- **Paste XYZ, MOL, SDF or MOL2 data from the clipboard** — paste coordinate
+  text directly (`Ctrl+V`/`Cmd+V`) into a modal instead of loading a file;
+  pasted content is auto-detected from its structure
+- MOL/SDF bond records and MOL2 bond sections are not needed for alignment;
+  bonds are detected from covalent radii in the same way for every input
+  format
+- Export remains XMol `.xyz`; for MOL/SDF/MOL2 imports, the imported atom
+  coordinates are written as an XYZ file
 - Interactive 3D viewer (3Dmol.js) with CPK atom colors, automatically
   detected bonds (adjustable bond-radius tolerance), and click-to-select
   atoms
@@ -105,9 +110,10 @@ index.html
 
 in a modern web browser.
 
-Then drag and drop an xyz file into the drop zone, click it to browse, or
-click **Get XYZ data from clipboard** and paste (`Ctrl+V`/`Cmd+V`) xyz text
-directly.
+Then drag and drop an `.xyz`, V2000 `.mol`/`.sdf`, or `.mol2` file into the
+drop zone, click it to browse, or click **Paste XYZ, MOL, SDF or MOL2 data**
+and paste (`Ctrl+V`/`Cmd+V`) coordinate text directly. Files are recognized
+by extension and pasted text by content.
 
 A typical workflow, equivalent to `xyzalign.py`, looks like this in the
 app:
@@ -122,10 +128,26 @@ app:
 
 ## Supported input files
 
-Only the standard XMol xyz file format is supported: an atom-count line, a
-comment line, then one `element x y z` line per atom (cartesian
-coordinates, in Å). Both header lines are preserved verbatim and written
-back unchanged on export.
+The importer supports the following coordinate formats:
+
+- **XMol `.xyz`** — an atom-count line, a comment line, then one
+  `element x y z` line per atom (cartesian coordinates, in Å). The two XYZ
+  header lines are preserved verbatim and written back unchanged on export.
+- **MDL V2000 `.mol` and `.sdf`** — atom coordinates are read from the
+  V2000 counts/atom block. V3000 is not supported. An SDF containing multiple
+  records is accepted, but only its first record is loaded; the remaining
+  records are reported as a warning.
+- **Sybyl `.mol2`** — atom coordinates are read from the first molecule's
+  `@<TRIPOS>ATOM` section. A MOL2 file containing multiple molecules is
+  accepted, but only the first molecule is loaded; the remaining molecules
+  are reported as a warning.
+
+File uploads and drag & drop use the filename extension where available,
+while clipboard paste uses automatic detection from the content. The same
+four formats are supported by paste. MOL/SDF bond records and MOL2 bond
+sections are ignored because the app detects bonds from covalent radii.
+Regardless of the input format, **Download modified XYZ** and **Copy
+modified XYZ** produce XYZ text/files.
 
 ## Alignment logic
 
@@ -182,6 +204,9 @@ Please cite:
 
 ## Known limitations
 
+- MOL/SDF imports support MDL V2000 only; V3000 files are rejected.
+- For multi-record SDF or multi-molecule MOL2 input, only the first record or
+  molecule is loaded and the rest is shown as a warning.
 - Alignment of two vectors that are already exactly antiparallel and both
   lie on a coordinate axis is a numerically unstable edge case inherited
   directly from the reference script's Rodrigues-formula-based approach;

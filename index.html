@@ -8,23 +8,23 @@
 </head>
 <body>
 
-  <div id="page-dropzone-overlay" class="page-dropzone-overlay">Drop .xyz file to load</div>
+  <div id="page-dropzone-overlay" class="page-dropzone-overlay">Drop an XYZ, MOL, SDF or MOL2 file to load</div>
 
   <header class="app-header">
     <h1>xyzalign web</h1>
     <div id="dropzone" class="dropzone">
-      <span>Open or drop an XMol .xyz file (element x y z per line)</span>
-      <input type="file" id="file-input" accept=".xyz,.txt" hidden />
+      <span>Open or drop an XMol .xyz, V2000 .mol/.sdf or Sybyl .mol2 file (coordinates are imported)</span>
+      <input type="file" id="file-input" accept=".xyz,.txt,.mol,.sdf,.mol2" hidden />
     </div>
     <div id="file-meta" class="file-meta"></div>
-    <button id="btn-paste-clipboard" class="btn-small" type="button">Get XYZ data from clipboard</button>
+    <button id="btn-paste-clipboard" class="btn-small" type="button">Paste XYZ, MOL, SDF or MOL2 data</button>
   </header>
 
   <div id="warning-banner" class="warning-banner"></div>
 
   <div id="paste-modal" class="paste-modal">
     <div class="paste-modal-box">
-      <h3>Paste XYZ data</h3>
+      <h3>Paste XYZ, MOL, SDF or MOL2 data</h3>
       <p class="xform-hint">Click into the field below and press <code>Ctrl+V</code> (or <code>Cmd+V</code>) to paste. It loads automatically as soon as you paste.</p>
       <textarea id="paste-textarea" class="paste-textarea" placeholder="Click here, then paste (Ctrl+V)…" spellcheck="false"></textarea>
       <div class="paste-modal-actions">
@@ -44,7 +44,7 @@
   </div>
 
   <div id="empty-state" class="empty-state">
-    No file loaded yet. Drop or select an .xyz file above to align, rotate and translate its coordinates.
+    No file loaded yet. Drop or select an .xyz, .mol, .sdf or .mol2 file above to align, rotate and translate its coordinates.
   </div>
 
   <main id="app-main" class="app-main">
